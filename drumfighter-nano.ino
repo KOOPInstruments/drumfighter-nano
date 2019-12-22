@@ -2,7 +2,7 @@
 //                  -----  DrumFighter Nano  -----                    //
 //             A palm-sized MIDI drum controller using                //
 //                 arcade push-buttons in a 4x4 grid.                 //
-//          Written for Adafruit ItsyBitsy 32u4 - (5V 16MHz)          //
+//                       Written for Teensy 2.0                       //
 //            or other Arduino compatible micro-controller            //
 //                   with MIDIUSB library v1.0.4                      //
 //              Copyright (C) 2019 - Michael Koopman                  //
@@ -177,8 +177,8 @@ const byte NUM_TOTAL_BUTTONS = 16;      // Total number of buttons in the matrix
 const byte NUM_TOTAL_PROGRAMS = 31;     // Total number of MIDI programs
 
 // Note button matrix pins
-const byte columns[] =   {11, 10, 9, 7};    // Assign pins to the columns in order of left to right.
-const byte rows[] =      {A1, A2, A3, A4};  // Assign pins to the rows in order of top to bottom.
+const byte columns[] =   {0, 1, 2, 3};    // Assign pins to the columns in order of left to right.
+const byte rows[] =      {4, 5, 6, 7};  // Assign pins to the rows in order of top to bottom.
 const byte columnCount = sizeof(columns);   // Count the number of columns.
 const byte rowCount =    sizeof(rows);      // Count the number of rows.
 
@@ -228,12 +228,12 @@ const byte AlternateGhostNotes[NUM_TOTAL_BUTTONS] = {
  40, 40, 40, 40,
  54, 35, 35, 53
 };
-// Etnhic Drum Notes
+// GarageBand (iOS) Kit Notes
 const byte Ethnic[NUM_TOTAL_BUTTONS] = {
- 64, 62, 63, 79,
- 70, 82, 54, 78,
- 77, 61, 60, 76,
- 71, 66, 65, 56
+ 41, 45, 48, 49,
+ 42, 46, 42, 51,
+ 37, 38, 38, 37,
+ 44, 36, 36, 53
 };
 
 
@@ -274,12 +274,12 @@ const byte InvertedAlternateGhostNotes[NUM_TOTAL_BUTTONS] = {
  40, 40, 40, 40,
  54, 35, 35, 53
 };
-// Orchestra Kit Notes
-const byte Orchestra[NUM_TOTAL_BUTTONS] = {
- 43, 45, 48, 49,
+// WalkBand (Android) Kit Notes
+const byte WalkBand[NUM_TOTAL_BUTTONS] = {
+ 45, 48, 43, 49,
  42, 46, 42, 51,
- 25, 38, 38, 25,
- 55, 36, 36, 53
+ 39, 38, 38, 39,
+ 58, 36, 36, 53
 };
 
 unsigned long currentTime;                              // Current milliseconds since power on for this program loop
@@ -307,7 +307,7 @@ void setup()
     // Serial.begin(31250);
 
     // Meta key on case rear
-    pinMode(13, INPUT_PULLUP);
+    pinMode(21, INPUT_PULLUP);
 
     // Set pinModes for the button matrix.
     for (byte i=0; i<columnCount; i++)      // For each column pin...
@@ -333,7 +333,7 @@ void setup()
 void loop()
 {
     currentTime = millis();             // Set current time to a reference variable for this program loop
-    metaKeyState = !digitalRead(13);    // Read the button state of the meta key on case rear, and invert it (due to INPUT_PULLUP)
+    metaKeyState = !digitalRead(21);    // Read the button state of the meta key on case rear, and invert it (due to INPUT_PULLUP)
     velocityRNG = random(-3, 3);        // Set a random value range from -3 to +3 to be applied to note velocity
     readButtons();                      // Read the state of the button matrix
 
@@ -438,7 +438,7 @@ void loop()
         padLayout = 11;
         for (int i = 0; i < NUM_TOTAL_BUTTONS; i++)
         {
-            noteNumbers[i] = Orchestra[i];
+            noteNumbers[i] = WalkBand[i];
         }
     }
 
