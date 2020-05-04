@@ -57,44 +57,7 @@
 // 56 Cowbell               86 Surdu Dead Stroke
 // 57 Crash Cymbal 2        87 Surdu
 //
-// GarageBand iOS Drum Notes
-// 31 +Pedal Hi-Hat
-// 32 +Electric Snare
-// 33 +Pedal Hi-Hat
-// 34 +Acoustic Snare
-// 35 Acoustic Bass Drum
-// 36 Bass Drum 1
-// 37 Side Stick
-// 38 Acoustic Snare
-// 39 Hand Clap
-// 40 Electric Snare
-// 41 Lo Floor Tom
-// 42 Closed Hi Hat
-// 43 Hi Floor Tom
-// 44 Pedal Hi Hat
-// 45 Lo Tom Tom
-// 46 Open Hi Hat
-// 47 Low -Mid Tom Tom
-// 48 Hi Mid Tom Tom
-// 49 Crash Cymbal 1
-// 50 Hi Tom Tom
-// 51 Ride Cymbal 1
-// 52 +Ride Cymbal 1 | Chinese Cymbal
-// 53 Ride Bell
-// 54 Tambourine
-// 55
-// 56 N/A
-// 57 Crash Cymbal 2
-// 58 N/A
-// 59 +Ride Cymbal 1
-// 62 Mute Hi Conga
-// 63 Open Hi Conga
-// 64 Low Conga
-// 65 Hi Timbale
-// 66 Lo Timbale
-// 70 Maracas
-//
-// FLUIDSYNTH FluidR3_GM.sf2 PERCUSSION PROGRAMS
+// FluidSynth (FluidR3_GM.sf2) Percussion Program Numbers
 // 0 Standard
 // 1 Standard 1
 // 2 Standard 2
@@ -127,17 +90,6 @@
 // 42 Brush 2
 // 48 Orchestra Kit
 //
-// Brush Kit is usually the same as the Standard Drum Kit with the following three exceptions:
-// Note #38 is a Brush Tap instead of a Snare Drum.
-// Note #39 is a Brush Slap instead of a Hand Clap.
-// Note #40 is a Brush Swirl instead of an Electric Snare Drum.
-//
-// PAD BUTTON BINARY VALUES
-//     1      2      4      8
-//    16     32     64    128
-//   256    512   1024   2048
-//  4096   8192  16384  32768
-
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // START OF PROGRAM
 
@@ -154,29 +106,29 @@ const byte rowCount    = sizeof(rows);          // Count the number of rows.
 
 const unsigned long debounceDelayTime = 1;                  // Debounce delay time in milliseconds
 unsigned long previousActivationTime[NUM_TOTAL_BUTTONS];    // Previous button activation time for debounce check
-unsigned int rawButtons;
+unsigned int rawButtons;                                    // Live button states
 unsigned int pendingButtons;                                // Pre-debounce candidate states
 unsigned int activeButtons;                                 // Post-debounce state of the button deck
 unsigned int previousActiveButtons;                         // Previous value for comparison
 
-unsigned int lockButtons;
+unsigned int lockButtons;                                   // Button input locking variable
 
 const byte midiChannel = 9;                                 // Default MIDI percussion channel 9 (channel 10 if counting from 1 instead of 0)
 byte noteValues[NUM_TOTAL_BUTTONS];                         // User updatable array containing note values of the current layout selection
-byte velocityValues[NUM_TOTAL_BUTTONS];
+byte velocityValues[NUM_TOTAL_BUTTONS];                     // User updatable array containing note velocities of the current layout selection
 
-int8_t velocity;                                            // Default velocity level
+int8_t velocityOffset;                                      // User adjustable velocity offset
 int8_t velocityRNG;                                         // Play with introducing a minor amount randomness into velocity levels so it doesn't sound so robotic
 
 byte padLayout;                                             // Current pad layout selection
 byte metaState;                                             // Track if meta state is active
-byte previousMetaState;
+byte previousMetaState;                                     // Previous value for comparison
 byte midiProgram;                                           // Store MIDI program selection
 
-byte lastVelocityUpState;                                   // State variable for the expression up key (meta + pressedButtons == 8)
-byte lastVelocityDownState;                                 // State variable for the expression down key (meta + pressedButtons == 128)
-byte lastProgramUpState;                                    // State variable for the program up key (meta + pressedButtons == 2048)
-byte lastProgramDownState;                                  // State variable for the program down key (meta + pressedButtons == 32768)
+byte lastVelocityUpState;                                   // State variable for the expression up key
+byte lastVelocityDownState;                                 // State variable for the expression down key
+byte lastProgramUpState;                                    // State variable for the program up key
+byte lastProgramDownState;                                  // State variable for the program down key
 
 
 // FluidSynth Percussion Program Patch Layout
@@ -240,17 +192,17 @@ const byte programMap[NUM_TOTAL_PROGRAMS] = {
      37, 39, 39, 38,
      44, 35, 35, 53
     };
-    const byte garageBandKit[NUM_TOTAL_BUTTONS] = {
-     41, 45, 48, 49,
-     42, 46, 42, 51,
-     37, 38, 38, 37,
-     44, 36, 36, 53
+    const byte drumlineKit[NUM_TOTAL_BUTTONS] = {
+     43, 45, 48, 49,
+     37, 46, 42, 37,
+     38, 38, 38, 38,
+     57, 36, 36, 41
     };
-    const byte walkBandKit[NUM_TOTAL_BUTTONS] = {
-     45, 48, 43, 49,
+    const byte phaseShiftKit[NUM_TOTAL_BUTTONS] = {
+     48, 45, 43, 49,
      42, 46, 42, 51,
-     39, 38, 38, 39,
-     58, 36, 36, 53
+     38, 38, 38, 38,
+     44, 36, 36, 23
     };
 
 
@@ -276,6 +228,7 @@ void setup()
     {
         velocityValues[i] = standardVelocity[i];
     }
+
 }
 // END SETUP SECTION
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -287,9 +240,6 @@ void loop()
 {
     // Print hardware diagnostic information to the serial console
     // printDiagnostics();
-
-    // Read and store the piezo sensor state
-    // readPiezoSensor();
 
     // Read and store the digital button states
     readDigitalButtons();
@@ -333,11 +283,6 @@ void printDiagnostics()
     delay(10);              // Delay a bit to stabalize the serial monitor stream
 }
 
-void readPiezoSensor()
-{
-    
-}
-
 
 void readDigitalButtons()
 {
@@ -364,36 +309,35 @@ void readDigitalButtons()
 
             if ((!digitalRead(currentRow)) == HIGH)                     // If the button is active
             {
-                bitWrite(rawButtons, buttonNumber, 1);               // Set the bit in the bit position of the button number to a 1.
+                bitWrite(rawButtons, buttonNumber, 1);                  // Set the bit in the bit position of the button number to a 1.
             }
             else
             {
-                bitWrite(rawButtons, buttonNumber, 0);               // Set the bit to a 0.
+                bitWrite(rawButtons, buttonNumber, 0);                  // Set the bit to a 0.
             }
 
-            if (bitRead(rawButtons, buttonNumber) != bitRead(pendingButtons, buttonNumber))
+            if (bitRead(rawButtons, buttonNumber) != bitRead(pendingButtons, buttonNumber))     // If a difference between raw and pending button is discovered
             {
-                previousActivationTime[buttonNumber] = millis();
-                bitWrite(pendingButtons, buttonNumber, bitRead(rawButtons, buttonNumber));
+                previousActivationTime[buttonNumber] = millis();                                // Reset the debounce clock for this button
+                bitWrite(pendingButtons, buttonNumber, bitRead(rawButtons, buttonNumber));      // Write the button state to the pendingButtons variable
             }
 
-            if ((millis() - previousActivationTime[buttonNumber]) > debounceDelayTime)
+            if ((millis() - previousActivationTime[buttonNumber]) > debounceDelayTime && bitRead(activeButtons, buttonNumber) != bitRead(pendingButtons, buttonNumber)) // If button passes debounce
             {
-                bitWrite(activeButtons, buttonNumber, bitRead(pendingButtons, buttonNumber));
+                bitWrite(activeButtons, buttonNumber, bitRead(pendingButtons, buttonNumber));   // Write the button state to the activeButtons variable to be sent to the note hopper
             }
-
             pinMode(currentRow, INPUT);                                 // Set the selected row pin back to INPUT mode (0V / LOW).
         }
         pinMode(currentColumn, INPUT);                                  // Set the selected column pin back to INPUT mode (0V / LOW) and move onto the next column pin.
     }
 
-    if (bitRead(activeButtons, 0) == HIGH && bitRead(activeButtons, 4) == HIGH && bitRead(activeButtons, 8) == HIGH && bitRead(activeButtons, 12) == HIGH)
+    if (bitRead(activeButtons, 0) == HIGH && bitRead(activeButtons, 4) == HIGH && bitRead(activeButtons, 8) == HIGH && bitRead(activeButtons, 12) == HIGH)  // If the left-most 4 buttons are held
     {
-        metaState = HIGH;
+        metaState = HIGH;                                               // Enable the meta key state
     }
     else
     {
-        metaState = LOW;
+        metaState = LOW;                                                // Otherwise, disable it
     }
 }
 
@@ -418,7 +362,7 @@ void runPadLayout()
             {
                 velocityValues[i] = standardVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Alternate Drum Kit Notes
@@ -437,7 +381,7 @@ void runPadLayout()
             {
                 velocityValues[i] = standardVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Standard w/ Ghost Notes
@@ -456,7 +400,7 @@ void runPadLayout()
             {
                 velocityValues[i] = ghostNotesVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Alternate w/ Ghost Notes
@@ -475,7 +419,7 @@ void runPadLayout()
             {
                 velocityValues[i] = ghostNotesVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Jazz Kit Notes
@@ -494,7 +438,7 @@ void runPadLayout()
             {
                 velocityValues[i] = standardVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Alternate Jazz Kit Notes
@@ -513,10 +457,10 @@ void runPadLayout()
             {
                 velocityValues[i] = standardVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
-        // GarageBand (iOS) Kit Notes
+        // Drumline Kit Notes
         // ● ○ ○ ○
         // ● ○ ○ ○
         // ● ○ ○ ○
@@ -526,16 +470,16 @@ void runPadLayout()
             bitWrite(lockButtons, 13, 1);
             for (int i = 0; i < NUM_TOTAL_BUTTONS; i++)
             {
-                noteValues[i] = garageBandKit[i];
+                noteValues[i] = drumlineKit[i];
             }
             for (int i = 0; i < NUM_TOTAL_BUTTONS; i++)
             {
-                velocityValues[i] = standardVelocity[i];
+                velocityValues[i] = ghostNotesVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
-        // WalkBand (Android) Kit Notes
+        // PhaseShift Kit Notes
         // ● ○ ○ ○
         // ● ○ ○ ○
         // ● ○ ○ ○
@@ -545,13 +489,13 @@ void runPadLayout()
             bitWrite(lockButtons, 14, 1);
             for (int i = 0; i < NUM_TOTAL_BUTTONS; i++)
             {
-                noteValues[i] = walkBandKit[i];
+                noteValues[i] = phaseShiftKit[i];
             }
             for (int i = 0; i < NUM_TOTAL_BUTTONS; i++)
             {
-                velocityValues[i] = standardVelocity[i];
+                velocityValues[i] = ghostNotesVelocity[i];
             }
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
     }
@@ -566,11 +510,11 @@ void runVelocityAdjustment()
         // ● ○ ○ ○
         // ● ○ ○ ○
         // ● ○ ○ ○
-        if (bitRead(activeButtons, 3) == 1 && bitRead(lockButtons, 3) == 0 && velocity < 16)
+        if (bitRead(activeButtons, 3) == 1 && bitRead(lockButtons, 3) == 0 && velocityOffset < 16)
         {
             bitWrite(lockButtons, 3, 1);
-            velocity = velocity + 8;
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            velocityOffset = velocityOffset + 8;
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Velocity Down
@@ -578,11 +522,11 @@ void runVelocityAdjustment()
         // ● ○ ○ ●
         // ● ○ ○ ○
         // ● ○ ○ ○
-        if (bitRead(activeButtons, 7) == HIGH && bitRead(lockButtons, 7) == 0 && velocity > -40)
+        if (bitRead(activeButtons, 7) == HIGH && bitRead(lockButtons, 7) == 0 && velocityOffset > -40)
         {
             bitWrite(lockButtons, 7, 1);
-            velocity = velocity - 8;
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            velocityOffset = velocityOffset - 8;
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
     }
@@ -602,7 +546,7 @@ void runProgramSelect()
             bitWrite(lockButtons, 11, 1);
             midiProgram = midiProgram + 1;
             programChange(midiChannel, programMap[midiProgram]);
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
         // Program Down
@@ -615,7 +559,7 @@ void runProgramSelect()
             bitWrite(lockButtons, 15, 1);
             midiProgram = midiProgram - 1;
             programChange(midiChannel, programMap[midiProgram]);
-            noteOn(midiChannel, 38, 95 + velocity + velocityRNG);
+            noteOn(midiChannel, 38, 95 + velocityOffset + velocityRNG);
             noteOff(midiChannel, 38, 0);
         }
     }
@@ -626,7 +570,7 @@ void runProgramSelect()
 //  values, and send note on/off commands for each button where appropriate.
 void playNotes()
 {
-    velocityRNG = random(-3, 3);                                                        // Set a random value range from -3 to +3 to be applied to note velocity
+    velocityRNG = random(-3, 3);                                                            // Set a random value range from -3 to +3 to be applied to note velocity
 
     if (metaState == LOW)
     {
@@ -636,12 +580,12 @@ void playNotes()
             {
                 if (bitRead(activeButtons, i))                                              // If the button is active
                 {
-                    noteOn(midiChannel, noteValues[i], velocityValues[i] + velocity + velocityRNG);    // Send a noteOn for this note
+                    noteOn(midiChannel, noteValues[i], velocityValues[i] + velocityOffset + velocityRNG);   // Send a noteOn for this note
                     bitWrite(previousActiveButtons, i , 1);                                 // Write to the "previous" value for comparison on next loop
                 }
                 else                                                                        // If the button is inactive
                 {
-                    noteOff(midiChannel, noteValues[i], 0);                                // Send a noteOff for this note
+                    noteOff(midiChannel, noteValues[i], 0);                                 // Send a noteOff for this note
                     bitWrite(previousActiveButtons, i , 0);                                 // Write to the "previous" value for comparison on next loop
                 }
             }
